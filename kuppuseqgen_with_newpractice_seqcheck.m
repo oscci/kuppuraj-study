@@ -1,4 +1,4 @@
-nblocks=10;%This version updated 8th August 2017
+nblocks=10;%This version updated 10th August 2017
 nsets=5;
 
 breakblock=8;
@@ -81,23 +81,245 @@ end
 for a =1:settings.stms.planned.n
     settings.stms.planned.words(a,1)=mywords(strmatch(settings.stms.planned.fnames(a),mytypes))';
 end
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Now do main sequences for learning, plus recall set
+% Now do main sequences for learning
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 targetpool=[triplets(1:12,4)];%pool of targets to include in distractor set
 initialpool=triplets(1:15,2);%pool of initial items
 randoms=randoms(randperm(length(randoms)));%randomise order of random items
 
-for mymakemat=1:2
+
     
     outfname_suffix='learning';%do recall first, as shorter matrices
-    if mymakemat==2
-        nblocks=1;
-        nsets=1;
-        outfname_suffix='recall';
+
+    
+    ind4set=0;%counter used by Mihaela
+    for b = 1:nblocks
+        for s = 1:nsets
+            randoms=randoms(randperm(length(randoms)));%randomise order of random items
+
+            bs=b*s;%one for first set and first block
+            if bs==1 lastt1='XX'; end;%this is to check if initial item of triplet in one series is same as first in next series
+            ind4set = ind4set + 1;
+            %Now randomise order of triplet type
+            alli=1:ntriplet;
+            thisi_seq=alli(randperm(ntriplet));
+            
+            %first avoid adjacent triplets within the set with same initial 2 triplet items
+            mynono=1;
+            while(mynono==1)
+                
+                myx=[4,5,6,7,8,9]; %myx2 must not follow equiv item in myx
+                myx2=[7,8,9,4,5,6];
+                mynono=0; %if this remains at 0, then no problems with sequence
+                for j=1:length(myx)
+                    k=find(thisi_seq==myx(j));%find where the myx items are in the sequence
+                    if (k<ntriplet)
+                        if(thisi_seq(k+1)==myx2(j))%check the following item; is it corresponding myx2 item?
+                            mynono=1;
+                        end
+                    end
+                end
+                if mynono==1, thisi_seq=alli(randperm(ntriplet));end
+            end %redo loop with new sequence if adjacency condition met
+            
+            %Now check if first item in set is same as last in previous set, swap with
+            %7th item in set (an arbitrary choice)
+            while char(triplets{thisi_seq(1),2})==lastt1
+                temp=thisi_seq(1);
+                myrand=1+randi(14);%number from 2 to 15
+                thisi_seq(1)=thisi_seq(myrand);%swap with a random element from seq
+                thisi_seq(myrand)=temp;
+            end
+            lastt1=char(triplets{thisi_seq(length(thisi_seq)),2});
+            
+            
+            
+            
+            
+            for j = 1:ntriplet
+                i=thisi_seq(j);%use the sequence selected in previous block of code
+                type1=triplets(i,2);
+                numword1=strmatch(type1,mytypes);
+                word1=mywords(numword1);
+                
+                type2=triplets(i,3);
+                if (char(type2)=='R'), type2=randoms(i);end
+                numword2=strmatch(type2,mytypes);
+                word2=mywords(numword2);
+                
+                type3=triplets(i,4);%target
+                if (char(type3)=='R'), type3=randoms(i);end
+                numword3=strmatch(type3,mytypes);%corresponding word index for this type
+                word3=mywords(numword3);%word3 is target
+                
+                numword4=numword3;
+                thisconflict=find(myconflicts(numword3,:)==1);
+                addconflict=numword4;
+                %Avoid alternate target as a distractor for probabiistic strings
+                chartype3=char(type3);
+                if (length(chartype3)<3)
+                    
+                    if(chartype3=='D1'), addconflict=strmatch('D2',mytypes);end
+                    if(chartype3=='D2'), addconflict=strmatch('D1',mytypes);end
+                    if(chartype3=='D3'), addconflict=strmatch('D4',mytypes);end
+                    if(chartype3=='D4'), addconflict=strmatch('D3',mytypes);end
+                    if(chartype3=='D5'), addconflict=strmatch('D6',mytypes);end
+                    if(chartype3=='D6'), addconflict=strmatch('D5',mytypes);end
+                    thisconflict=[thisconflict,addconflict];
+                end
+                while(find(thisconflict==numword4)>0);
+                    type4=datasample(targetpool,1);  %type4 is 1st distractor: another potential target
+                    numword4=strmatch(type4,mytypes);
+                end
+                word4=mywords(numword4);%distractor 1
+                
+                
+                potentialdistractors=[initialpool;dis_pool;smids'];
+                numword5=numword4;
+                thisconflict=unique([find(myconflicts(numword4,:)==1),thisconflict,numword1,numword2]);
+                %use conflicts for both target and D1, and also avoid words 1 and 2
+                while(find(thisconflict==numword5)>0);
+                    type5= datasample(potentialdistractors,1) ; %type5 is 2nd distractor: drawn from randoms/initials
+                    numword5=strmatch(type5,mytypes);
+                end
+                word5=mywords(numword5);%distractor 2
+                
+                if i<13 %nonrandom triplets
+                    potentialdistractors=randoms;% have one random distractor for each triplet
+                end
+                numword6=numword5;
+                thisconflict=unique([find(myconflicts(numword5,:)==1),thisconflict,numword1,numword2]);
+                %use conflicts for both target and D1, and also avoid words 1 and 2
+                while(find(thisconflict==numword6)>0);
+                    type6= datasample(potentialdistractors,1) ; %type6 is erd distractor: drawn from randoms/initials
+                    numword6=strmatch(type6,mytypes);
+                end
+                word6=mywords(numword6);%distractor 3
+                
+                %Show derived sequences: NB order to be randomised before presenting
+                alltype=[type1,type2,type3,type4,type5,type6];
+                allword=[word1,word2,word3,word4,word5,word6];
+                
+                %Numbers for compatibility with Mihaela structure
+                numtrio=[allnum(strmatch(alltype(1),allstim)), allnum(strmatch(alltype(2),allstim)), (allnum(strmatch(alltype(3),allstim)))];
+                for n=1:3
+                    mynumcell{j,n}=numtrio(n);
+                end
+                
+                %Program will put frame around those prefixed with 'T', so do
+                %this for items 1 and 2, and for the target
+                
+                alltype(1)=strcat('T',alltype(1));
+                alltype(2)=strcat('T',alltype(2));
+                myr=3;%default is item 3 is target
+                if (b==breakblock)
+                    myr=datasample(4:6,1);%select one of the distractors (items 4-6)
+                end
+                alltype(myr)=strcat('T',alltype(myr)); %prefix target with 'T'
+                
+                %Now randomise order for the 4 pics on item 3 of triplet
+                myorder=3:6;
+                myperm=myorder(randperm(4));%3:6 in random seq
+                alltype(3:6)=alltype(myperm);
+                allword(3:6)=allword(myperm);
+                
+                %Copy relevant info to Mihaela structures
+                settings.sets.trplts_type{1,ind4set}=thisi_seq';%Mihaela cell variable stores order of types
+                mycell(3,1:4)=alltype(3:6);
+                mycell(1,1)=alltype(1);
+                mycell(2,1)=alltype(2);
+                trial_info.stm{b,s,j}=mycell;
+                %add new field, word, that stores actual words
+                mycell(3,1:4)=allword(3:6);
+                mycell(1,1)=allword(1);
+                mycell(2,1)=allword(2);
+                trial_info.word{b,s,j}=mycell;
+            end
+            settings.sets.trplts_order{1,ind4set}=mynumcell;
+        end
     end
+    
+    %Write to csv file using Mihaela formats
+    %first create my decoder from type to word
+    settings.decoder={mywords;mytypes};
+    settings.n_blocks=nblocks;
+    settings.n_sets4block=nsets;
+    c_routine=strcat('Routine',num2str(myroutine));
+    settings.routines=c_routine;
+    
+    settings.n_imgs4trial(1:2)=1;
+    settings.n_imgs4trial(3)=4;
+    outfname = ['SEQ_' outfname_suffix '_' c_routine ];
+    % write the whole design into a separate file
+    outfname_design = [outfname '.csv'];
+    fdout = fopen(outfname_design, 'w');
+    ind4set = 0; %this is a counter that increments for each block/set
+    for i_blk = 1:settings.n_blocks,
+        fprintf(fdout, 'Block,%d\n', i_blk);
+        for i_set = 1:settings.n_sets4block,
+            fprintf(fdout, 'Set,%d\n', i_set);
+            ind4set = ind4set + 1;
+            
+            for i_trp = 1:ntriplet
+                
+                c_trp_type = settings.sets.trplts_type{ind4set}(i_trp);
+                fprintf(fdout, ',,Type,%d\n,,', c_trp_type);
+                %this version prints word alongside items 1 and 2, and below
+                %for the 4 choices on item 3 of triplet
+                for i_trl = 1:3,
+                    for i_img = 1:settings.n_imgs4trial(i_trl),
+                        
+                        fprintf(fdout, '%s,', trial_info.stm{i_blk, i_set, i_trp}{i_trl, i_img});
+                        if (i_trl<3)
+                            fprintf(fdout, '%s,', trial_info.word{i_blk, i_set, i_trp}{i_trl, i_img});
+                        end
+                    end
+                    fprintf(fdout, '\n,,');
+                end
+                for i_img = 1:settings.n_imgs4trial(i_trl),
+                    
+                    fprintf(fdout, '%s,', trial_info.word{i_blk, i_set, i_trp}{i_trl, i_img});
+                end
+                fprintf(fdout, '\n,,');
+                fprintf(fdout, '\n');
+            end
+            fprintf(fdout, '\n');
+        end
+    end
+    fclose(fdout);
+    
+    save([outfname '.mat'], 'trial_info', 'settings');
+    
+    allmystim=[];
+    for k=1:50 %this saves stimulus sequences for easy checking, with numeric
+        %ccodes
+        allmystim=[allmystim;settings.sets.trplts_order{1,k}];
+    end
+    csvwrite('OutputTest.csv',allmystim);
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % Now do main sequences for recall
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    clear settings
+    clear trial_info
+    settings.stms.dependencies.fnames={'A1', 'A2', 'A3', 'B1', 'B2', 'B3', ...
+        'C1', 'C2', 'C3', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'E1', 'E2', 'E3', 'F1', 'F2', 'F3', 'Z1', 'Z2', 'Z3'}';
+    settings.stms.random.fnames=randoms;
+    settings.stms.planned.fnames=smids';
+    settings.stms.random.n=length(randoms);
+    settings.stms.dependencies.n=length(settings.stms.dependencies.fnames);
+    settings.stms.planned.n=length(smids);
+    
+    settings.triplts4set=20;
+    targetpool=[triplets(1:12,4)];%pool of targets to include in distractor set
+    initialpool=triplets(1:15,2);%pool of initial items
+    randoms=randoms(randperm(length(randoms)));%randomise order of random items
+    
+    nblocks=1;
+    nsets=1;
+    outfname_suffix='recall';
+    
     
     ind4set=0;%counter used by Mihaela
     for b = 1:nblocks
@@ -112,7 +334,7 @@ for mymakemat=1:2
             %first avoid adjacent triplets within the set with same initial 2 triplet items
             mynono=1;
             while(mynono==1)
-
+                
                 myx=[4,5,6,7,8,9]; %myx2 must not follow equiv item in myx
                 myx2=[7,8,9,4,5,6];
                 mynono=0; %if this remains at 0, then no problems with sequence
@@ -120,7 +342,7 @@ for mymakemat=1:2
                     k=find(thisi_seq==myx(j));%find where the myx items are in the sequence
                     if (k<ntriplet)
                         if(thisi_seq(k+1)==myx2(j))%check the following item; is it corresponding myx2 item?
-                            mynono=1; 
+                            mynono=1;
                         end
                     end
                 end
@@ -129,7 +351,7 @@ for mymakemat=1:2
             
             %Now check if first item in set is same as last in previous set, swap with
             %7th item in set (an arbitrary choice)
-           while char(triplets{thisi_seq(1),2})==lastt1
+            while char(triplets{thisi_seq(1),2})==lastt1
                 temp=thisi_seq(1);
                 myrand=1+randi(14);%number from 2 to 15
                 thisi_seq(1)=thisi_seq(myrand);%swap with a random element from seq
@@ -137,170 +359,164 @@ for mymakemat=1:2
             end
             lastt1=char(triplets{thisi_seq(length(thisi_seq)),2});
             
-        
-        
-        
-        
-        for j = 1:ntriplet
-            i=thisi_seq(j);%use the sequence selected in previous block of code
-            type1=triplets(i,2);
-            numword1=strmatch(type1,mytypes);
-            word1=mywords(numword1);
             
-            type2=triplets(i,3);
-            if (char(type2)=='R'), type2=randoms(i);end
-            numword2=strmatch(type2,mytypes);
-            word2=mywords(numword2);
             
-            type3=triplets(i,4);%target
-            if (char(type3)=='R'), type3=randoms(i);end
-            numword3=strmatch(type3,mytypes);%corresponding word index for this type
-            word3=mywords(numword3);%word3 is target
             
-            numword4=numword3;
-            thisconflict=find(myconflicts(numword3,:)==1);
-            addconflict=numword4;
-            %Avoid alternate target as a distractor for probabiistic strings
-            chartype3=char(type3);
-            if (length(chartype3)<3)
+            
+            for j = 1:ntriplet
+                i=thisi_seq(j);%use the sequence selected in previous block of code
+                type1=triplets(i,2);
+                numword1=strmatch(type1,mytypes);
+                word1=mywords(numword1);
                 
-                if(chartype3=='D1'), addconflict=strmatch('D2',mytypes);end
-                if(chartype3=='D2'), addconflict=strmatch('D1',mytypes);end
-                if(chartype3=='D3'), addconflict=strmatch('D4',mytypes);end
-                if(chartype3=='D4'), addconflict=strmatch('D3',mytypes);end
-                if(chartype3=='D5'), addconflict=strmatch('D6',mytypes);end
-                if(chartype3=='D6'), addconflict=strmatch('D5',mytypes);end
-                thisconflict=[thisconflict,addconflict];
+                type2=triplets(i,3);
+                if (char(type2)=='R'), type2=randoms(i);end
+                numword2=strmatch(type2,mytypes);
+                word2=mywords(numword2);
+                
+                type3=triplets(i,4);%target
+                if (char(type3)=='R'), type3=randoms(i);end
+                numword3=strmatch(type3,mytypes);%corresponding word index for this type
+                word3=mywords(numword3);%word3 is target
+                
+                numword4=numword3;
+                thisconflict=find(myconflicts(numword3,:)==1);
+                addconflict=numword4;
+                %Avoid alternate target as a distractor for probabiistic strings
+                chartype3=char(type3);
+                if (length(chartype3)<3)
+                    
+                    if(chartype3=='D1'), addconflict=strmatch('D2',mytypes);end
+                    if(chartype3=='D2'), addconflict=strmatch('D1',mytypes);end
+                    if(chartype3=='D3'), addconflict=strmatch('D4',mytypes);end
+                    if(chartype3=='D4'), addconflict=strmatch('D3',mytypes);end
+                    if(chartype3=='D5'), addconflict=strmatch('D6',mytypes);end
+                    if(chartype3=='D6'), addconflict=strmatch('D5',mytypes);end
+                    thisconflict=[thisconflict,addconflict];
+                end
+                while(find(thisconflict==numword4)>0);
+                    type4=datasample(targetpool,1);  %type4 is 1st distractor: another potential target
+                    numword4=strmatch(type4,mytypes);
+                end
+                word4=mywords(numword4);%distractor 1
+                
+                
+                potentialdistractors=[initialpool;dis_pool;smids'];
+                numword5=numword4;
+                thisconflict=unique([find(myconflicts(numword4,:)==1),thisconflict,numword1,numword2]);
+                %use conflicts for both target and D1, and also avoid words 1 and 2
+                while(find(thisconflict==numword5)>0);
+                    type5= datasample(potentialdistractors,1) ; %type5 is 2nd distractor: drawn from randoms/initials
+                    numword5=strmatch(type5,mytypes);
+                end
+                word5=mywords(numword5);%distractor 2
+                
+                if i<13 %nonrandom triplets
+                    potentialdistractors=randoms;% have one random distractor for each triplet
+                end
+                numword6=numword5;
+                thisconflict=unique([find(myconflicts(numword5,:)==1),thisconflict,numword1,numword2]);
+                %use conflicts for both target and D1, and also avoid words 1 and 2
+                while(find(thisconflict==numword6)>0);
+                    type6= datasample(potentialdistractors,1) ; %type6 is erd distractor: drawn from randoms/initials
+                    numword6=strmatch(type6,mytypes);
+                end
+                word6=mywords(numword6);%distractor 3
+                
+                %Show derived sequences: NB order to be randomised before presenting
+                alltype=[type1,type2,type3,type4,type5,type6];
+                allword=[word1,word2,word3,word4,word5,word6];
+                
+                %Numbers for compatibility with Mihaela structure
+                numtrio=[allnum(strmatch(alltype(1),allstim)), allnum(strmatch(alltype(2),allstim)), (allnum(strmatch(alltype(3),allstim)))];
+                for n=1:3
+                    mynumcell{j,n}=numtrio(n);
+                end
+                
+                %Program will put frame around those prefixed with 'T', so do
+                %this for items 1 and 2, and for the target
+                
+                alltype(1)=strcat('T',alltype(1));
+                alltype(2)=strcat('T',alltype(2));
+                myr=3;%default is item 3 is target
+                if (b==breakblock)
+                    myr=datasample(4:6,1);%select one of the distractors (items 4-6)
+                end
+                alltype(myr)=strcat('T',alltype(myr)); %prefix target with 'T'
+                
+                %Now randomise order for the 4 pics on item 3 of triplet
+                myorder=3:6;
+                myperm=myorder(randperm(4));%3:6 in random seq
+                alltype(3:6)=alltype(myperm);
+                allword(3:6)=allword(myperm);
+                
+                %Copy relevant info to Mihaela structures
+                settings.sets.trplts_type{1,ind4set}=thisi_seq';%Mihaela cell variable stores order of types
+                mycell(3,1:4)=alltype(3:6);
+                mycell(1,1)=alltype(1);
+                mycell(2,1)=alltype(2);
+                trial_info.stm{b,s,j}=mycell;
+                %add new field, word, that stores actual words
+                mycell(3,1:4)=allword(3:6);
+                mycell(1,1)=allword(1);
+                mycell(2,1)=allword(2);
+                trial_info.word{b,s,j}=mycell;
             end
-            while(find(thisconflict==numword4)>0);
-                type4=datasample(targetpool,1);  %type4 is 1st distractor: another potential target
-                numword4=strmatch(type4,mytypes);
-            end
-            word4=mywords(numword4);%distractor 1
-            
-            
-            potentialdistractors=[initialpool;dis_pool;smids'];
-            numword5=numword4;
-            thisconflict=unique([find(myconflicts(numword4,:)==1),thisconflict,numword1,numword2]);
-            %use conflicts for both target and D1, and also avoid words 1 and 2
-            while(find(thisconflict==numword5)>0);
-                type5= datasample(potentialdistractors,1) ; %type5 is 2nd distractor: drawn from randoms/initials
-                numword5=strmatch(type5,mytypes);
-            end
-            word5=mywords(numword5);%distractor 2
-            
-            if i<13 %nonrandom triplets
-                potentialdistractors=randoms;% have one random distractor for each triplet
-            end
-            numword6=numword5;
-            thisconflict=unique([find(myconflicts(numword5,:)==1),thisconflict,numword1,numword2]);
-            %use conflicts for both target and D1, and also avoid words 1 and 2
-            while(find(thisconflict==numword6)>0);
-                type6= datasample(potentialdistractors,1) ; %type6 is erd distractor: drawn from randoms/initials
-                numword6=strmatch(type6,mytypes);
-            end
-            word6=mywords(numword6);%distractor 3
-            
-            %Show derived sequences: NB order to be randomised before presenting
-            alltype=[type1,type2,type3,type4,type5,type6];
-            allword=[word1,word2,word3,word4,word5,word6];
-            
-            %Numbers for compatibility with Mihaela structure
-            numtrio=[allnum(strmatch(alltype(1),allstim)), allnum(strmatch(alltype(2),allstim)), (allnum(strmatch(alltype(3),allstim)))];
-            for n=1:3
-                mynumcell{j,n}=numtrio(n);
-            end
-            
-            %Program will put frame around those prefixed with 'T', so do
-            %this for items 1 and 2, and for the target
-            
-            alltype(1)=strcat('T',alltype(1));
-            alltype(2)=strcat('T',alltype(2));
-            myr=3;%default is item 3 is target
-            if (b==breakblock)
-                myr=datasample(4:6,1);%select one of the distractors (items 4-6)
-            end
-            alltype(myr)=strcat('T',alltype(myr)); %prefix target with 'T'
-            
-            %Now randomise order for the 4 pics on item 3 of triplet
-            myorder=3:6;
-            myperm=myorder(randperm(4));%3:6 in random seq
-            alltype(3:6)=alltype(myperm);
-            allword(3:6)=allword(myperm);
-            
-            %Copy relevant info to Mihaela structures
-            settings.sets.trplts_type{1,ind4set}=thisi_seq';%Mihaela cell variable stores order of types
-            mycell(3,1:4)=alltype(3:6);
-            mycell(1,1)=alltype(1);
-            mycell(2,1)=alltype(2);
-            trial_info.stm{b,s,j}=mycell;
-            %add new field, word, that stores actual words
-            mycell(3,1:4)=allword(3:6);
-            mycell(1,1)=allword(1);
-            mycell(2,1)=allword(2);
-            trial_info.word{b,s,j}=mycell;
+            settings.sets.trplts_order{1,ind4set}=mynumcell;
         end
-        settings.sets.trplts_order{1,ind4set}=mynumcell;
     end
-end
-
-%Write to csv file using Mihaela formats
-%first create my decoder from type to word
-settings.decoder={mywords;mytypes};
-settings.n_blocks=nblocks;
-settings.n_sets4block=nsets;
-c_routine=strcat('Routine',num2str(myroutine));
-settings.routines=c_routine;
-
-settings.n_imgs4trial(1:2)=1;
-settings.n_imgs4trial(3)=4;
-outfname = ['SEQ_' outfname_suffix '_' c_routine ];
-% write the whole design into a separate file
-outfname_design = [outfname '.csv'];
-fdout = fopen(outfname_design, 'w');
-ind4set = 0; %this is a counter that increments for each block/set
-for i_blk = 1:settings.n_blocks,
-    fprintf(fdout, 'Block,%d\n', i_blk);
-    for i_set = 1:settings.n_sets4block,
-        fprintf(fdout, 'Set,%d\n', i_set);
-        ind4set = ind4set + 1;
-        
-        for i_trp = 1:ntriplet
+    
+    %Write to csv file using Mihaela formats
+    %first create my decoder from type to word
+    settings.decoder={mywords;mytypes};
+    settings.n_blocks=nblocks;
+    settings.n_sets4block=nsets;
+    c_routine=strcat('Routine',num2str(myroutine));
+    settings.routines=c_routine;
+    
+    settings.n_imgs4trial(1:2)=1;
+    settings.n_imgs4trial(3)=4;
+    outfname = ['SEQ_' outfname_suffix '_' c_routine ];
+    % write the whole design into a separate file
+    outfname_design = [outfname '.csv'];
+    fdout = fopen(outfname_design, 'w');
+    ind4set = 0; %this is a counter that increments for each block/set
+    for i_blk = 1:settings.n_blocks,
+        fprintf(fdout, 'Block,%d\n', i_blk);
+        for i_set = 1:settings.n_sets4block,
+            fprintf(fdout, 'Set,%d\n', i_set);
+            ind4set = ind4set + 1;
             
-            c_trp_type = settings.sets.trplts_type{ind4set}(i_trp);
-            fprintf(fdout, ',,Type,%d\n,,', c_trp_type);
-            %this version prints word alongside items 1 and 2, and below
-            %for the 4 choices on item 3 of triplet
-            for i_trl = 1:3,
+            for i_trp = 1:ntriplet
+                
+                c_trp_type = settings.sets.trplts_type{ind4set}(i_trp);
+                fprintf(fdout, ',,Type,%d\n,,', c_trp_type);
+                %this version prints word alongside items 1 and 2, and below
+                %for the 4 choices on item 3 of triplet
+                for i_trl = 1:3,
+                    for i_img = 1:settings.n_imgs4trial(i_trl),
+                        
+                        fprintf(fdout, '%s,', trial_info.stm{i_blk, i_set, i_trp}{i_trl, i_img});
+                        if (i_trl<3)
+                            fprintf(fdout, '%s,', trial_info.word{i_blk, i_set, i_trp}{i_trl, i_img});
+                        end
+                    end
+                    fprintf(fdout, '\n,,');
+                end
                 for i_img = 1:settings.n_imgs4trial(i_trl),
                     
-                    fprintf(fdout, '%s,', trial_info.stm{i_blk, i_set, i_trp}{i_trl, i_img});
-                    if (i_trl<3)
-                        fprintf(fdout, '%s,', trial_info.word{i_blk, i_set, i_trp}{i_trl, i_img});
-                    end
+                    fprintf(fdout, '%s,', trial_info.word{i_blk, i_set, i_trp}{i_trl, i_img});
                 end
                 fprintf(fdout, '\n,,');
+                fprintf(fdout, '\n');
             end
-            for i_img = 1:settings.n_imgs4trial(i_trl),
-                
-                fprintf(fdout, '%s,', trial_info.word{i_blk, i_set, i_trp}{i_trl, i_img});
-            end
-            fprintf(fdout, '\n,,');
             fprintf(fdout, '\n');
         end
-        fprintf(fdout, '\n');
     end
-end
-fclose(fdout);
+    fclose(fdout);
+    
+    save([outfname '.mat'], 'trial_info', 'settings');
 
-save([outfname '.mat'], 'trial_info', 'settings');
-end
-allmystim=[];
-for k=1:50 %this saves stimulus sequences for easy checking, with numeric
-    %ccodes
-    allmystim=[allmystim;settings.sets.trplts_order{1,k}];
-end
-xlswrite('OutputTest',allmystim);
 
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % %Practice block: have 20 triplets so all 60 stimuli are named, but assignation
