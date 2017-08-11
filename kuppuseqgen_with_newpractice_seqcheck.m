@@ -1,7 +1,7 @@
 nblocks=10;%This version updated 10th August 2017
 nsets=5;
 
-breakblock=8;
+breakblock=7;% currently set to take breakblock and adjacent block as random
 myroutine=1;%can alter this
 
 clear settings
@@ -214,7 +214,7 @@ randoms=randoms(randperm(length(randoms)));%randomise order of random items
                 alltype(1)=strcat('T',alltype(1));
                 alltype(2)=strcat('T',alltype(2));
                 myr=3;%default is item 3 is target
-                if (b==breakblock)
+                if (b==breakblock||b==(breakblock+1))
                     myr=datasample(4:6,1);%select one of the distractors (items 4-6)
                 end
                 alltype(myr)=strcat('T',alltype(myr)); %prefix target with 'T'
@@ -311,7 +311,7 @@ randoms=randoms(randperm(length(randoms)));%randomise order of random items
     settings.stms.dependencies.n=length(settings.stms.dependencies.fnames);
     settings.stms.planned.n=length(smids);
     
-    settings.triplts4set=20;
+    settings.triplts4set=15;
     targetpool=[triplets(1:12,4)];%pool of targets to include in distractor set
     initialpool=triplets(1:15,2);%pool of initial items
     randoms=randoms(randperm(length(randoms)));%randomise order of random items
