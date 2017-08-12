@@ -294,8 +294,13 @@ randoms=randoms(randperm(length(randoms)));%randomise order of random items
     
     allmystim=[];
     for k=1:50 %this saves stimulus sequences for easy checking, with numeric
-        %ccodes
-        allmystim=[allmystim;settings.sets.trplts_order{1,k}];
+        %ccodes; first cols give block and set
+        b=uint8((k+2)/5);
+        s=k-((b-1)*5);
+        frontb=double(repmat([b,s],15,1));
+        lastb=cell2mat(settings.sets.trplts_order{1,k});
+        addstim=[frontb,lastb];
+        allmystim=[allmystim;addstim];
     end
     csvwrite('OutputTest.csv',allmystim);
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
