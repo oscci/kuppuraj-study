@@ -1,4 +1,4 @@
-nblocks=10;%This version updated 10th August 2017
+nblocks=10;%This version updated 12th August 2017
 nsets=5;
 
 breakblock=7;% currently set to take breakblock and adjacent block as random
@@ -224,7 +224,7 @@ randoms=randoms(randperm(length(randoms)));%randomise order of random items
                 myperm=myorder(randperm(4));%3:6 in random seq
                 alltype(3:6)=alltype(myperm);
                 allword(3:6)=allword(myperm);
-                
+               
                 %Copy relevant info to Mihaela structures
                 settings.sets.trplts_type{1,ind4set}=thisi_seq';%Mihaela cell variable stores order of types
                 mycell(3,1:4)=alltype(3:6);
@@ -236,6 +236,7 @@ randoms=randoms(randperm(length(randoms)));%randomise order of random items
                 mycell(1,1)=allword(1);
                 mycell(2,1)=allword(2);
                 trial_info.word{b,s,j}=mycell;
+                 targetpos(j,ind4set)=find(myperm==myr);
             end
             settings.sets.trplts_order{1,ind4set}=mynumcell;
         end
@@ -299,7 +300,7 @@ randoms=randoms(randperm(length(randoms)));%randomise order of random items
         s=k-((b-1)*5);
         frontb=double(repmat([b,s],15,1));
         lastb=cell2mat(settings.sets.trplts_order{1,k});
-        addstim=[frontb,lastb];
+        addstim=[frontb,lastb,targetpos(:,k)];
         allmystim=[allmystim;addstim];
     end
     csvwrite('OutputTest.csv',allmystim);
