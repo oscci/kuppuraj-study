@@ -1,5 +1,15 @@
-nblocks=10;%This version updated 14th August 2017
+%Generate sequences for use with SRT_RT
+% by DVM Bishop
+
+%rng(0,'twister');%random number generator; for testing turn on for same
+%seq
+
+nblocks=10;%This version updated 15th August 2017
 %This presents just one grammatical sequence per type, and 3 random 
+% NB also corrected an error that led to occasional sequences of same
+% initial triplet members from probabilistic sequences
+% Now saving also file with numeric codes and target positions in the .mat
+% file (allmystim)
 nsets=5;
 
 breakblock=7;% currently set to take breakblock and adjacent block as random
@@ -64,8 +74,7 @@ for i=1:mynwords-1
         myconflicts(i,j)=myconflicts(j,i); %turn into symmetric matrix
     end
 end
-rng(0,'twister');%random number generator; for testing turn on for same
-%seq
+
 
 %change the unused types to randoms
 unused={  'A2', 'S2', 'B2',...
@@ -490,7 +499,7 @@ initialpool=triplets([1,2,4,5],2);%pool of initial items, A1, C1, E1 and Z1
     end
     fclose(fdout);
     
-    save([outfname '.mat'], 'trial_info', 'settings');
+  
     
     allmystim=[];
     for k=1:50 %this saves stimulus sequences for easy checking, with numeric
@@ -502,7 +511,9 @@ initialpool=triplets([1,2,4,5],2);%pool of initial items, A1, C1, E1 and Z1
         addstim=[frontb,lastb,targetpos(:,k)];
         allmystim=[allmystim;addstim];
     end
+    %allmystim has block, set, numcode1, numcode2,numcode3, targetposition
     csvwrite('OutputTest.csv',allmystim);
+      save([outfname '.mat'], 'trial_info', 'settings','allmystim');
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % Now do main sequences for recall
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
