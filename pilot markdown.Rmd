@@ -1,0 +1,338 @@
+---
+title: 'Pilot data analysis: Kuppuraj et al'
+author: "DVM Bishop"
+date: "30/08/2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE)
+```
+
+### Pilot data for 'Online incidental statistical learning of audiovisual word sequences in adults - a registered report'
+Task design and analysis is a collaborative effort between Kuppuraj, Paul Thompson, Mihaela Duta and Dorothy Bishop.
+
+
+Analysis of data from task version 5, August 2017.
+
+The sequence of triplets used in this task is as follows for each set:
+
+    1, A1, S1, B1; %Adjacent deterministic
+    2, A1, S1, B1;
+    3, C1, S2, D1; %Adjacent probabilistic
+    4, C1, S2, D2;
+    5,  E1, R, F1;%Non-adjacent deterministic. R is random
+    6,  E1, R, F1;
+    7, R, R, R; %Totally random
+    8, R, R, R;
+    
+This code is used in the Matlab program used to generate stimulus sequences, which is kuppuseqgen_2A2C2E2R_seqgen.m
+
+This uses stimulus specifications from: 'all_stimuli_routines_3cond_kup_final.xlsx'
+which is a giant matrix listing all word stimuli, and documenting where there are 'conflicts', such that two stimuli should not co-occur in the same array - either because of the same first phoneme, or because of visual confusibility.
+
+The matlab program also checks that two triplets  with the same initial two elements do not occur in succession.
+
+Terminology when referring to the experiment:
+
+* Item - an individual word/picture pairing
+* Triplet - a sequence of 3 items, with the last one being a target
+* Distractor - 3 items that accompany each target 
+* Set - a sequence containing each triplet type - occurring in a random order from 1 to 8.
+* Block - a series of N sets. N is currently set at 5, and there are 10 blocks, so 50 sets in all 
+* Phase - a set of blocks that either includes triplets with dependencies (**Learning phase**, from blocks 1 to 6), or **Final phase** from blocks 9 to 10), or presents triplets with same initial 2 items, but with a target randomly selected from the distractors (**Break-sequence phase**)
+
+## Data analysis
+Current version of analysis in R is 'mixed effects regression discontinuity_V5.R'
+Useful references for linear mixed effects modeling are:
+http://bbolker.github.io/mixedmodels-misc/glmmFAQ.html
+
+https://rstudio-pubs-static.s3.amazonaws.com/33653_57fc7b8e5d484c909b615d8633c01d51.html
+
+https://stats.stackexchange.com/questions/242109/model-failed-to-converge-warning-in-lmer
+
+Initial steps: may need to install packages. 
+
+``` 
+setwd("~/Dropbox/SL and WM paper/Revision/Pilot_Data_Revised task/V5")
+#directory where data are found - currently set to Mac
+options(scipen=999) #avoid scientific format
+#library(devtools)
+#install_github(repo = "RDDtools", username = "MatthieuStigler", subdir = "RDDtools")
+
+library(RDDtools)
+library(optimx)
+library(lme4)
+library(ggplot2)
+library(doBy)
+library(gridExtra)
+library(tidyverse)
+library(RColorBrewer)
+#substitute windows for quartz if nonmac
+if(.Platform$OS.type=="windows") {
+  quartz<-function() windows()
+} 
+```
+
+## Specifying basic task parameters
+``` 
+breakblock<-c(7,8)
+nsets<-5
+nblocks<-10
+phase1.start<-1
+phase1.end<-nsets*(breakblock[1]-1)
+phase2.start<-phase1.end+1
+phase2.end<-nsets*(breakblock[2])
+phase3.start<-phase2.end+1
+phase3.end<-nsets*nblocks
+phase1.range<-c(phase1.start:phase1.end)
+phase2.range<-c(phase2.start:phase2.end)
+phase3.range<-c(phase3.start:phase3.end)
+
+namelist=c('pilot_01','pilot_02','pilot_03','pilot_04','pilot_05','pilot_06','pilot_07',
+           'pilot_08','pilot_09')
+nsubs<-length(namelist)
+#initialise data frames for holding main data and regression coefficients for individual participants
+main.data<-data.frame(ID=factor(), SetInd=integer(), Type=integer(), TargetRT=integer())
+lmsummarycoefs<-data.frame(matrix(NA,nsubs*25,nrow=nsubs))
+```
+Now process each person's data and add to main summary file
+```
+for (i in 1:nsubs){
+  
+  myname=namelist[i]
+  mycsv=paste(myname,".csv",sep="")
+  mydata= read.csv(mycsv)  # read csv file 
+  #get rid of RTs of inaccurate responses:replace with NA. 
+  Rwdata=mydata
+  rawdata=Rwdata[ ,c(1,10,12,26)]
+  
+  ##############
+  rawdata$TargetRT[rawdata$TargetACC==0]<-NA
+  rawdata$TargetRT[rawdata$TargetRT<-199]<-NA #include anticipations up to -200
+  rawdata$TargetRT[rawdata$TargetRT>RTcutoff]<-RTcutoff #set long RTs to the RTcutoff value
+  
+  RWdata<-rawdata
+  
+  #rename the types 
+  RWdata$Type[RWdata$Type==1]<- "Adj_D"
+  RWdata$Type[RWdata$Type==2]<- "Adj_D"
+  
+  RWdata$Type[RWdata$Type==3]<- "Adj_P"
+  RWdata$Type[RWdata$Type==4]<- "Adj_P"
+  
+  RWdata$Type[RWdata$Type==5]<- "Non_D"
+  RWdata$Type[RWdata$Type==6]<- "Non_D"
+  
+  RWdata$Type[RWdata$Type==7]<- "rand"
+  RWdata$Type[RWdata$Type==8]<- "rand"
+  
+  RWdata$Type<-as.factor(RWdata$Type)
+  RWdata$Type<-factor(RWdata$Type,levels=c("rand", "Adj_D", "Adj_P", "Non_D"))
+  #ensure random is the first in the list, as this will be baseline comparison in analysis
+  
+  #Create a new matrix that has summary data for this participant. 
+  
+  detaildata<- summaryBy(TargetRT ~ SetInd+Type,  data=RWdata,
+  FUN=c(min), na.rm=TRUE)
+  #NB only 2 points to consider, so now taking minimum, not median
+  
+  detaildata$ID<-rep(RWdata$ID[4],length(detaildata[,1]))
+  #Need to repeat the subject ID on each line
+  
+  names(detaildata)<-c("SetInd", "Type", "TargetRT", "ID") #column headings
+  
+  main.data<-rbind(main.data,detaildata) #add to main data in long form with participants stacked below each other
+}
+```
+## Regression discontinuity analysis for individual participants
+The package RDDtools makes it easy to compare the slopes of two portions of data. We do this for phase 1 (learning) and phase 2 (break-sequence). The t-value for this comparison can be used as an index of learning. The outputs are written to a .csv file for inspection.
+```
+#add coeffs for reg discontinuity, just for learning/break-seq phases
+lmsummarycoefs<-data.frame(matrix(NA,24,nrow=nsubs))#initialise dataframe to hold coefficients, t and pvalues
+for (i in 1:nsubs){
+startcol<- -5 #set so that this will append columns to right place (Historical)
+for (mytype in 1:4){
+  mytemp<-filter(main.data,ID==namelist[i],Type==thistype[mytype],SetInd<41)
+  # using the RDDtools package
+  RDD.temp<-RDDdata(y=mytemp$TargetRT,x=mytemp$SetInd,cutpoint=31)
+  reg_para <- RDDreg_lm(RDDobject = RDD.temp, order = 1) #this is just linear: for higher order can increase
+  startcol<-startcol+6
+  endcol<-startcol+3
+  lmsummarycoefs[i,startcol:endcol]<-reg_para$coefficients
+  st<-summary(reg_para)[[4]]
+  myt<-st[2,3]#t-value corresponding to difference in slope for two phases
+  lmsummarycoefs[i,endcol+1]<-myt
+  myp<-summary(reg_para)$coefficients[2,4]#sig of slope diff for the two phases
+  lmsummarycoefs[i,endcol+2]<-myp
+  colnames(lmsummarycoefs)[startcol:endcol]<-paste0(thistype[mytype],'.',names(reg_para$coefficients))
+  colnames(lmsummarycoefs)[endcol+1]<-paste0(thistype[mytype],'_t.diff')
+  colnames(lmsummarycoefs)[endcol+2]<-paste0(thistype[mytype],'_p.diff')
+ }
+}
+write.csv(lmsummarycoefs, file = "lm_discont_coeffs_linear.csv")
+shortbit<-select(lmsummarycoefs,5,6,11,12,17,18,23,24) #just cols for t-values and p
+rownames(shortbit)<-namelist
+shortbit
+#can view shortbit to see which participants show which effects
+```
+## Modifications to main.data to create factors etc
+```
+main.data$ID <- as.factor(main.data$ID)
+main.data$log_TargetRT<-log(main.data$TargetRT+200) #to allow for anticipatory responses
+main.data<-data.frame(main.data)
+
+```
+## Plot overall data
+
+
+``` 
+png(filename="Grandavg.png") 
+summarytable<-summaryBy(TargetRT~SetInd+Type,data=main.data,FUN=c(mean),na.rm=TRUE)
+ggplot(summarytable,aes(x = SetInd, y = TargetRT.mean,color=Type))  +
+  geom_line()
+  dev.off()
+```
+![Grand average.](/Users/dorothybishop/Dropbox/SL and WM paper/Revision/Pilot_Data_Revised task/V5/Grandavg.png)
+
+## Plot the individual data
+This allows us to see how well the regression discontinuity value identifies those who seem to be learning. The horizontal grey lines denote the break-seq blocks. 
+(NB I can't currently get this to incorporate the plot in output except by writing to file then reading back)
+
+```
+
+png(filename="Indivdata.png",width = 1000, height = 300)
+#quartz(width=12,height=3)
+ggplot(main.data, aes(x = SetInd, y = TargetRT,color=Type)) + 
+  geom_line(alpha=0.75) + 
+  geom_vline(aes(xintercept = 30), color = 'grey', size = 1, linetype = 'dashed') + 
+  geom_vline(aes(xintercept = 40), color = 'grey', size = 1, linetype = 'dashed') +
+   theme_bw()+facet_grid(~ID)+ scale_fill_brewer(palette="Set1")+
+  theme(legend.position = "top",strip.text=element_text(size=14),axis.text=element_text(size=14),axis.title=element_text(size=14,face="bold"))
+dev.off()
+  
+```
+
+![Individual participants](/Users/dorothybishop/Dropbox/SL and WM paper/Revision/Pilot_Data_Revised task/V5/Indivdata.png)
+
+## Create new variables for phase and set
+Note that phase is a single variable which is defined as a factor with break-seq first, so it is treated as the reference level.
+
+Set is coded in 3 variables, b1, b2, b3, each of which contains a value for sets that fall inside phases 1, 2, and 3 respectively, and zero otherwise. These will be used to compute separate slopes for each phase.
+
+b1,b2,b3 are the centred set indices for phases 1, 2 and 3, and so are quantitative and so reflect the slope, whereas phase1, phase2 and phase3 are a factor and reflect overall mean diffs in RT between phases.
+
+```
+# (this is rather clunky!)
+main.data$phase1<-ifelse(main.data$SetInd %in% phase1.range,1,0)
+main.data$phase2<-ifelse(main.data$SetInd %in% phase2.range,1,0) #block where seq broken
+main.data$phase3<-ifelse(main.data$SetInd %in% phase3.range,1,0) #block where seq restored
+
+main.data$p123<-as.factor(main.data$phase1+2*main.data$phase2+3*main.data$phase3)
+levels(main.data$p123)<-c('Learn','Break','Final')
+main.data$p123<-factor(main.data$p123,levels=c("Break","Learn","Final"))#reorder factor levels
+
+main.data$SetInd_c<-scale(main.data$SetInd) #centre the set variable
+myseq<-scale(seq(1,nblocks*nsets))
+bp1<-myseq[phase2.start]-.01 #cutpoint1 on centred set index, nudged down so won't exclude sets with exact match of value
+bp2<-myseq[phase3.start]-.01 #cutpoint2 on centred set index
+
+#functions to determine if value x is in phase1, phase2 or phase3
+#So this ignores values for sets not in this phase (sets to zero), but has all other phases scaled
+#so that they show increment across phase
+b1make <- function(x, bp1) ifelse(x < bp1, bp1 + x, 0) #NB altered by DB from bp1-x
+b2make <- function(x, bp1, bp2) ifelse(x >= bp1 & x < bp2, x - bp1, 0)
+b3make <- function(x, bp2) ifelse(x < bp2, 0, x - bp2)
+
+#add b1, b2, b3 to main.data rather than computing during regression
+#(also helps understand these functions by seeing how they relate to set)
+main.data$b1<-b1make(main.data$SetInd_c,bp1) #will be used to compute slope for Learning phase
+main.data$b2<-b2make(main.data$SetInd_c,bp1,bp2) #will be used for slope for break-seq
+main.data$b3<-b3make(main.data$SetInd_c,bp2)#will be used for slope for final
+
+```
+## Run the model
+The model and main.data are saved for use in the subsequent power program. The coefficients for fixed and random effects are also written to csv files.
+
+Bolker advice on fixed/random:
+ 'Treating factors with small numbers of levels as random will in the best case lead to very small and/or imprecise estimates of random effects'
+On this basis, we are treating (centred) set as random effect (coded as b1, b2, b3) but phase is a fixed effect
+
+The output gives warning about convergence failure. But the parameters make sense and are stable regardless
+of method - I have tried NM and BFGS. So I think OK.
+see: https://stats.stackexchange.com/questions/110004/how-scared-should-we-be-about-convergence-warnings-in-lme4
+'if two optimizers give the same parameters, but different diagnostics -- 
+ and those parameters make real world sense -- then I would be inclined to trust the parameter values. 
+ The difficulty could lie with the diagnostics, which are not fool-proof'. 
+ 
+ N.B. This model takes about 5-10 mins to run.
+
+```
+mod.2e <- lmer(TargetRT ~ Type*p123  #nb will automatically do main effects as well
+                 +(0+b1*Type+b2*Type+b3*Type|ID), data = main.data,
+                 REML = TRUE,control = lmerControl(optimizer = "optimx", 
+                                                   calc.derivs = TRUE, optCtrl = list(method = "nlminb")))
+ mod.2esum<-summary(mod.2e)$coefficients 
+ my.ranef2e<-ranef(mod.2e) #random effects
+ write.csv(my.ranef2e[1], file = "mod.2e_rand_effects.csv")
+ write.csv(mod.2esum,file="mod.2e_fixed.coeffs.csv")
+ 
+ #save objects for use in power program
+ saveRDS(mod.2e, "mod.2e.rds")
+ saveRDS(main.data,"maindata.rds")
+summary(mod.2e)
+```
+## Regression diagnostics
+
+```
+png(filename="regdiag.mod.2e.png")
+grid.arrange(  
+plot(mod.2e,type=c("p","smooth")),
+
+plot(mod.2e,sqrt(abs(resid(.)))~fitted(.),
+                  type=c("p","smooth"),ylab=expression(sqrt(abs(resid)))),
+
+plot(mod.2e,resid(.,type="pearson")~SetInd_c, type=c("p","smooth")))
+dev.off()
+
+
+png(filename="regdiag2.mod.2e.png")
+qqnorm(resid(mod.2e))
+qqline(resid(mod.2e)) # shape due to using whole numbers 1:40.
+
+hist(resid(mod.2e),100)
+dev.off()
+```
+ ![Regression diagnostics 1](/Users/dorothybishop/Dropbox/SL and WM paper/Revision/Pilot_Data_Revised task/V5/regdiag.mod.2e.png)
+
+ ![Regression diagnostics 2](/Users/dorothybishop/Dropbox/SL and WM paper/Revision/Pilot_Data_Revised task/V5/regdiag2.mod.2e.png)
+## Plots of predicted slopes by participant
+N.B. These illustrate why slope alone is not a perfect index of learning; see case of S07;
+She learned Det_Adj rapidly in first block, and then stayed flat - so the slope was not very steep overall. Learning in this case was better indicated  by overall RT difference from random triplets than by slope.
+
+
+``` 
+#Create table for prediction 
+startdat<-select(main.data,ID,Type,SetInd,SetInd_c,p123,b1,b2,b3)
+startdat$SetInd<-as.integer(startdat$SetInd)
+newdat1d<-startdat[startdat$SetInd<31,]
+newdat2d<-startdat[startdat$SetInd>30,]
+newdat2d<-newdat2d[newdat2d$SetInd<41,]
+newdat3d<-startdat[startdat$SetInd>40,]
+
+png(filename="fittedplot.mod.2e.png", width=1000,height=300)
+
+ ggplot(main.data, aes(x = SetInd_c, y = TargetRT,color=Type)) + 
+   geom_point(alpha=0.75) + 
+   geom_vline(aes(xintercept = bp1), color = 'grey', size = 1, linetype = 'dashed') + 
+   geom_vline(aes(xintercept = bp2), color = 'grey', size = 1, linetype = 'dashed') +
+   geom_line(data=newdat1d,aes(y=predict(mod.2e,newdata=newdat1d)),size = .75)+
+   geom_line(data=newdat2d,aes(y=predict(mod.2e,newdata=newdat2d)),size = .75)+
+   geom_line(data=newdat3d,aes(y=predict(mod.2e,newdata=newdat3d)),size = .75)+
+   theme_bw()+facet_grid(~ID)+ scale_fill_brewer(palette="Set1")+
+   theme(legend.position = "top",strip.text=element_text(size=12),axis.text=element_text(size=12),axis.title=element_text(size=12,face="bold"))
+ dev.off()
+```
+ ![Fitted random effects](/Users/dorothybishop/Dropbox/SL and WM paper/Revision/Pilot_Data_Revised task/V5/fittedplot.mod.2e.png)
